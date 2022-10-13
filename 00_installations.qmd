@@ -1,0 +1,74 @@
+# "Installer rtauargus"
+
+
+```{r}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Le package `rtauaurgus` est développé au sein de la DMRG à l'Insee. Le code est déposé sur github:
+
+- [dépôt github de `rtauargus`](https://github.com/InseeFrLab/rtauargus)
+- [documentation en ligne (en anglais) de `rtauargus`](https://inseefrlab.github.io/rtauargus/)
+
+Les informations pour commencer avec le package sont ici: [get started with rtauargus](https://inseefrlab.github.io/rtauargus/articles/rtauargus.html)
+
+
+## Installer les dépendances 
+  
+```{r}
+#| eval: FALSE
+install.packages("gdata")
+install.packages("zoo")
+```
+  
+  
+## Installer le package `rtauargus`
+  
+  
+    a. Première option: Si vous êtes sur AUS:  
+
+```{r}
+#| eval: FALSE
+install.packages(
+  "rtauargus",
+  repos = "https://nexus.insee.fr/repository/r-public",
+  type = "source"
+)
+```
+
+
+    b. Seconde option: Si vous n'êtes pas sur AUS:
+
+Vous pouvez télécharger le source du package sur le  [repo github du package](https://github.com/InseeFrLab/rtauargus/releases/download/v-1.1.1/rtauargus_1.1.1.tar.gz). Le fichier téléchargé est un fichier `.tar.gz`.
+
+Ensuite, vous pouvez installer le package depuis `R` en faisant:
+```{r}
+#| eval: FALSE
+install.packages(
+  "chemin/vers/rtauargus_1.1.1.tar.gz", 
+  repos = NULL,  type="source"
+)
+```
+
+
+## Tau-Argus
+
+Tau-Argus est un [logiciel open-source](https://github.com/sdcTools/tauargus) développé par CBS (Stats Netherlands) qui fait référence en Europe pour gérer la confidentialité des données tabulées. 
+
+Si vous travaillez sur AUS, la dernière version du logiciel est déjà installée sous: `Y:/Logiciels/TauArgus/TauArgus4.2.3/TauArgus.exe`
+
+Sinon, l'installation du logiciel est très simple:
+
+- il suffit de télécharger le fichier .zip de la dernière version sur cette page:
+https://github.com/sdcTools/tauargus/releases. 
+- La version 4.2.3 est ainsi téléchargeable [ici](https://github.com/sdcTools/tauargus/releases/download/v4.2.3/TauArgus4.2.3.zip).
+- puis d'extraire le dossier sur votre ordinateur à l'endroit souhaité.
+
+
+
+
+
+
+

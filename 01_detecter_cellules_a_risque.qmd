@@ -1,0 +1,117 @@
+# Détecter des cellules à risque
+
+Rafraîchissez votre session R en faisant `ctrl+shift+F10`.
+
+
+```{r}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(dir.root = getwd())
+```
+
+
+## Objectif:
+
+Détecter les cellules ne respectant pas les règles de confidentialité
+dans les tableaux proposés.
+
+## Consignes:
+
+Vous utiliserez les règles en vigueur à l'Insee pour la diffusion des
+tableaux issus des enquêtes entreprises.
+
+1.  Pour chacun des tableaux, vous ajouterez une variable booléenne
+    indiquant si la cellule est problématique (`TRUE`) ou non (`FALSE`),
+    au regard de chacune des règles pertinentes à appliquer:
+    
+-   Si vous appliquez la règle de fréquence, la variable créée
+    s'appellera `is_secret_freq`;
+-   Si vous appliquez la règle de dominance, la variable créée
+    s'appellera `is_secret_dom`.
+
+2.  Après avoir posé le secret, vous calculerez le nombre de cellules
+    détectées comme à risque.
+
+## Contexte
+
+Tous les tableaux fournis ont une structure identique dont l'utilité
+sera expliquée plus tard. En plus des variables décrivant les
+croisements (variables catégorielles) placées en début, suivent:
+
+-   `FREQ` la variable indiquant le nombre d'unités statistiques
+    (entreprises en général dans nos exemples) contribuant à la cellule;
+-   `VALUE` la variable indiquant la somme pondérée des valeurs de
+    l'ensemble des contributeurs à la cellule (Cela peut être un chiffre
+    d'affaires, un nombre de personnes en emploi au 31/12, etc.);
+-   `MAX` la valeur du plus gros contributeur à la cellule.
+
+`MAX` et `VALUE` sont nécessairement dans la même unité. Si `VALUE` et
+`FREQ` sont identiques, vous êtes en présence d'un tableau d'effectifs.
+Dans ce cas, la colonne `MAX` n'a aucune utilité.
+
+## Packages et données
+
+
+```{r}
+library(dplyr)
+```
+
+
+```{r}
+load("data/data_pour_exo1.RData")
+```
+
+
+## A vous de jouer
+
+1.  Le tableau `T1` fournit le nombre d'entreprises produisant des
+    salades par secteur d'activité `ACT` et taille des entreprises
+    `SIZE`.
+
+```{r}
+str(T1)
+```
+
+Le tableau `T1` est un tableau d'effectifs, seule la règle de fréquence
+s'applique. D'après la jurisprudence Insee sur la diffusion des données
+entreprises, le seuil de diffusion est fixé à 3. Toute cellule non nulle
+ayant un effectif \< 3 est jugée à risque (ré-identification).
+
+```{r}
+T1_detect <- T1 %>%
+    mutate(is_secret_freq = FREQ > 0 & FREQ < 3)
+```
+
+
+```{r}
+T1_detect %>% count(is_secret_freq)
+```
+
+
+2.  Le tableau `T2` fournit le chiffre d'affaires des entreprises
+    produisant des salades, par secteur d'activité `ACT` et taille des
+    entreprises `SIZE`.
+
+```{r}
+str(T2)
+```
+
+Le tableau `T2` est un tableau de volumes (CA), les règles de fréquence
+et de dominance s'appliquent. D'après la jurisprudence Insee sur la
+diffusion des données entreprises, le seuil de fréquence est fixé à 3 et
+le plus gros contributeur ne doit pas contribuer à plus de 85% de la
+cellule.
+
+```{r}
+T2_detect <- T2 %>%
+    mutate(
+      is_secret_freq = FREQ > 0 & FREQ < 3,
+      is_secret_dom = (VALUE != 0) & (MAX > 0.85*VALUE)
+    )
+```
+
+
+```{r}
+T2_detect %>% count(is_secret_freq, is_secret_dom)
+```
+

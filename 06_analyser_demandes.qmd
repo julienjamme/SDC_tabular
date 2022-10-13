@@ -1,0 +1,85 @@
+# Analyser une demande
+
+Rafraîchissez votre session R en faisant `ctrl+shift+F10`.
+
+
+```{r}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = getwd())
+```
+
+## Objectif:
+
+A partir d'une demande littérale et de quelques métadonnées, savoir déterminer 
+le jeu de tableaux adéquats pour respecter la confidentialité de la diffusion qui 
+vous est adressée.
+
+## Consignes:
+
+Vous utiliserez les règles en vigueur à l'Insee pour la diffusion des
+tableaux issus des enquêtes entreprises.
+
+## Etapes à suivre
+
+1. Prendre connaissance de la demande et s'assurer que toutes les informations
+nécessaires  à la gestion de la confidentialité ont été fournies (sinon les 
+demander)
+
+Les informations nécessaires sont:
+
+- une description précise des tableaux que votre interlocuteur souhaite diffuser:
+  - sur quel champ de la population les tableaux sont-ils construits ?
+  - quelles sont les variables descriptives (de croisement) ?
+  - quelle est la variable de réponse pour chacun des tableaux ?
+  - Les tableaux sont-ils des tableaux de fréquence ou bien tableaux de volume ?
+  - Parmi l'ensemble des variables de croisements, certaines sont-elles 
+  hiérarchiques ? Les emboîtements ont-ils été fournis ?
+- une description précise des liens éventuels entre les variables ou tableaux:
+  - Certaines variables ou modalités sont-elles reliées par une équation ?
+  - Ces équations/liens ont-ils tous été fournis ?
+  - De fortes corrélations existent-elles entre certaines variables de réponse ?
+  
+2. La demande peut-elle être séparée en plusieurs sous-demandes indépendantes ?
+
+- Des tableaux portant sur des variables de réponse différentes, non liées par 
+une équation ou par un lien de corrélation fort, peuvent être traités séparément.
+- Des tableaux construits sur des champs différents et non coplémentaires peuvent 
+être traités séparément.
+- Y a-t-il au contraire des tableaux qui doivent être traités dans le même temps ?
+  - Rassembler les tableaux partageant même variable de réponse et même champ, 
+  car ils partagent a minima le même super-total.
+  - Déterminer les tableaux liés entre eux par leurs marges;
+  - Déterminer les tableaux liés entre eux car "additifs";
+  - Déterminer les tableaux liés entre eux par la présence potentielle de hiérarchies 
+  non emboitées.
+
+Chaque sous-demande doit faire l'objet d'un traitement à part, en suivant les 
+mêmes étapes.
+
+3. Lister les tableaux nécessaires pour la pose de secret
+
+- Rassembler en un tableau des tableaux liés car "additifs"
+- Séparer en plusieurs tableaux un tableau qui contiendrait des sous-totaux non-emboîtés;
+
+4. Construire les hiérarchies éventuellement nécessaires
+
+5. Construire les tableaux à partir des tableaux fournis par l'utilisateur (si besoin)
+
+6. Procéder à la pose du masque en opérant comme indiqué dans la fiche [05_proteger_tableaux_lies.Rmd](05_proteger_tableaux_lies.Rmd)
+
+
+
+## Exercices
+
+Par binôme, vous choisirez l'un des sujets présents dans le fichier 
+[sujets_analyse_demandes.ods](sujets_analyse_demandes.ods).
+  
+  
+
+
+
+
+
+
+

@@ -1,0 +1,272 @@
+# Les hiérarchies
+
+Rafraîchissez votre session R en faisant `ctrl+shift+F10`.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(dir.root = getwd())
+```
+
+## Objectif:
+
+Comprendre la notion de variables hiérarchiques et savoir manipuler les objets et 
+fichiers argus qui y sont associés.
+
+## Packages et données
+
+```{r packages}
+library(dplyr)
+library(rtauargus)
+```
+
+```{r data}
+load(file="data/data_pour_exo3.RData")
+```
+
+
+## Exemple 
+
+Reprenons l'exemple présenté dans le diaporama:
+
+```{r}
+T0 <- data.frame(
+  geo = c("Pays","Nord","Ouest","Est","Sud",paste0("N",1:3),paste0("O",1:4),paste0("E",1:3), paste0("S",1:2)),
+  freq = c(400, 46, 191, 80, 83, 21, 2, 23, 32, 54, 67, 38, 27, 41, 12, 44, 39)
+)
+```
+
+
+La variable `geo` est une variable hiérarchique puisqu'existent des emboîtements 
+entre les différents niveaux:  
+
+- Pays = Nord + Ouest + Est + Sud
+- Nord = N1 + N2 + N3
+- Ouest = O1 + O2 + O3 + O4
+- Est = E1 + E2 + E3
+- Sud = S1 + S2
+
+
+Avant de penser à protéger un tel tableau, il faut pouvoir représenter correctement 
+cette hiérarchie, cad de telle sorte que tau-argus sache comprendre les différents
+emboîtements présents.
+
+
+### Première option
+
+La première option consiste à créer le fichier nécessaire (extension .hrc) à la main.
+Ceci est tout à fait pertinent si la hiérarchie n'est pas trop étendue.
+
+Tau-Argus attend en effet un type de fichier bien particulier, dont l'extension 
+est `.hrc`. Il s'agit d'un simple fichier texte où les différents emboîtements 
+sont écrits les uns en-dessous des autres. Un symbole (le `@`) est utilisé pour 
+préciser le niveau de chacun des emboîtements au sein de la hiérarchie.
+
+Par exemple, un fichier contenant les lignes suivantes :
+
+ALL  
+@A  
+@@A1  
+@@A2  
+@B  
+@@B1  
+@@B2  
+@@@B21  
+@@@B22  
+@C  
+
+
+décrit une hiérarchie contenant les emboîtements suivants:  
+
+- ALL = A + B + C => ALL est le total et A, B et C sont les emboîtements de niveau 1;
+- A = A1 + A2 => A1 et A2 sont des sous-niveaux de A, donc des emboîtements de niveau 2;
+- B = B1 + B2
+- B2 = B21 + B22
+
+Ainsi, pour le cas de `T0`, on peut décrire l'emboîtement tel qu'il est présenté 
+dans le fichier [hrc/pays.hrc](hrc/pays.hrc).
+
+
+```{r}
+read.table("hrc/pays.hrc")
+```
+
+
+Néanmoins, pour utiliser cette hiérarchie avec Tau-Argus, le super-total (ici "Pays")
+ne doit pas apparaître dans le fichier .hrc qui lui est fourni. Pour cet exemple,
+le bon fichier hiérarchique à utiliser est le fichier [hrc/pays_TA.hrc](hrc/pays_TA.hrc)
+
+
+```{r}
+read.table("hrc/pays_TA.hrc")
+```
+
+L'utilisation des fichiers hiérarchiques lors de la pose de masque sera vue dans 
+la fiche exercice [Exos/04_proteger_un_tableau_V2.Rmd](Exos/04_proteger_un_tableau_V2.Rmd).
+
+
+### Seconde option
+
+Quand la hiérarchie est très étendue, l'écriture manuelle du fichier de hiérarchie 
+est pénible. Or, quand ce genre de cas se présente, il existe souvent une table 
+de correspondance permettant d'associer les différents niveaux entre eux.
+
+Nous appelons table de correspondance une table qui précise l'ensemble des niveaux 
+associés aux emboîtements les plus fins.
+
+La table de correspondance représentant la hiérarchie suivante :
+
+ALL
+@A
+@@A1
+@@A2
+@B
+@@B1
+@@B2
+@@@B21
+@@@B22
+@C
+
+est la suivante:
+
+
+```{r}
+corr_tab <- tibble(
+  niv0 = "ALL",
+  niv1 = c(rep("A",2),rep("B",3), "C"),
+  niv2 = c("A1","A2","B1",rep("B2",2), "C"),
+  niv3 = c("A1","A2","B1", "B21", "B22", "C")
+)
+corr_tab
+```
+
+Remarque: La fonction `rtauargus::write_hrc2()` qui permet de construire le fichier `.hrc` 
+à partir d'une table de correspondance n'accepte pas de valeurs manquantes dans 
+la table en entrée. C'est pourquoi, à la dernière ligne, par exemple, `C` 
+n'admettant pas de subdivisions est répété sur les niveaux inférieurs.
+
+
+Avec la fonction `write_hrc2()` du package `rtauargus`, on peut exporter la 
+table de correspondance en un fichier `hrc`.
+
+```{r}
+write_hrc2(corr_tab, file_name = "hrc/exemple.hrc")
+```
+
+```{r}
+read.table("hrc/exemple.hrc")
+```
+
+
+Comme noté précédemment, Tau-Argus n'acceptant pas que le super-total d'une variable 
+hiérarchique soit présnet dans le fichier `.hrc` on le supprime:
+
+
+
+```{r}
+write_hrc2(corr_tab %>% select(-niv0), file_name = "hrc/exemple_TA.hrc")
+```
+
+```{r}
+read.table("hrc/exemple_TA.hrc")
+```
+
+En prenant la hiérarchie de la variable `geo` de l'exemple du diapo, on peut 
+construire la table de correspondance suivante:
+
+```{r}
+pays_corr_table <- tibble(
+  niv0 = "Pays",
+  niv1 = c(rep("Nord",3),rep("Ouest",4),rep("Est",3), rep("Sud",2)),
+  niv2 = c(paste0("N",1:3),paste0("O",1:4),paste0("E",1:3), paste0("S",1:2))
+)
+pays_corr_table
+```
+
+```{r}
+write_hrc2(pays_corr_table %>% select(-niv0), file_name = "hrc/pays_TA_2.hrc")
+```
+
+```{r}
+read.table("hrc/pays_TA_2.hrc")
+```
+
+
+## A vous de jouer
+
+Deux types de variables hiérarchiques sont très courantes dans les tableaux 
+statistiques diffusés par l'Insee: 
+
+- la nomenclature des activités;
+- les zonages administratifs ou d'études.
+
+
+1. Créez un fichier hiérarchique à partir de la table de correspondance des activités.
+
+Vous pourrez utiliser la table `activity_corr_table` qui renseigne les emboîtements 
+entre les niveaux A10, A21 et A88 de la NAF.  
+
+
+1.1 Vérifiez que la table de correspondance à la bonne tête
+
+```{r}
+str(activity_corr_table)
+```
+1.2 Le super-total est-il présent dans la table de correspondance ?
+
+Non. S'il avait été présent il aurait fallu supprimer la colonne correspondante 
+avant d'exporter la hiérarchie au format `hrc`.
+
+
+1.3 Exportez la hiérarchie au format adpaté pour Tau-Argus.
+
+Vous l'exporterez dans le dossier `hrc` à la racine du projet.
+
+```{r}
+write_hrc2(activity_corr_table, file_name = "hrc/activity.hrc")
+```
+
+1.4 Ouvrez le fichier `.txt` et vérifiez à l'oeil si l'exportation s'est correctement 
+déroulée.
+
+
+Il s'agit ici d'un contrôle visuel. Le plus pratique est d'ouvrir le fichier 
+texte (.hrc) dans n'importe quel éditeur de texte (bloc notes, RStudio ou Notepad++).
+
+
+2. Créez un fichier hiérarchique à partir de la table de correspondance des zonages.
+
+Vous pourrez utiliser la table `nuts23_fr_corr_table` qui renseigne les emboîtements 
+entre les régions et les départements.
+
+```{r}
+str(nuts23_fr_corr_table)
+```
+
+```{r}
+write_hrc2(nuts23_fr_corr_table, file_name = "hrc/nuts23.hrc")
+```
+
+
+
+## Exercice Bonus
+
+
+Téléléchargez la dernière version du code officiel géographique:
+https://www.insee.fr/fr/statistiques/fichier/6051727/commune_2022.csv 
+
+Importez le fichier dans R et construisez la table de correspondance adéquate 
+pour exporter un fichier `.hrc` décrivant les emboîtements:  
+
+REG > DEP > ARR > COM
+
+
+
+
+
+
+
+
+
+
+
+

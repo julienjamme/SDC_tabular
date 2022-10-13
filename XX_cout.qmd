@@ -1,0 +1,220 @@
+---
+title: Protéger des tableaux avec R et Tau-Argus
+subtitle: Exemple coût
+date: 2022-10-11
+number_sections: true
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+Rafraîchissez votre session R en faisant `ctrl+shift+F10`.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = getwd())
+```
+
+
+## Objectif:
+
+Apprendre à utiliser l'option cost du package rtauargus afin de rediriger le secret
+secondaire
+
+## Contexte
+
+Tau-Argus utilise des algorithmes d'optimisation afin de minimiser la perte
+d'information qui résulte du secret secondaire. La question qui se pose est
+quelle valeur doit-être minimiser ? Plusieurs choix sont possibles, la valeur des
+cellules, le nombre de cellules, les effectifs des cellules.  Il est également
+possible de personaliser les coûts si l'on souhaite prioriser la pose de secret
+secondaire sur certains agrégats.
+
+## Packages et données
+
+```{r packages}
+library(dplyr)
+library(rtauargus)
+```
+
+
+```{r data}
+load("data/data_pour_exemple_cout.RData")
+```
+
+## Localisation de Tau-Argus
+
+Si vous êtes sur AUS
+
+```{r}
+loc_tauargus <- "Y:/Logiciels/TauArgus/TauArgus4.2.3/TauArgus.exe"
+options(rtauargus.tauargus_exe = loc_tauargus)
+```
+
+Sinon:
+
+```{r eval=FALSE}
+loc_tauargus <- "C:/Users/tmm7an/Documents/SDC/TauArgus/TauArgus4.2.3/TauArgus.exe"
+options(rtauargus.tauargus_exe = loc_tauargus)
+```
+
+## Chargement de la table
+
+On considère le tableau suivant:
+
+```{r}
+tab_cout
+```
+
+## Minimiser la valeur secrétisée
+
+```{r}
+res_opti_val <- tab_rtauargus(tab_cout,
+              files_name = "cout_valeur",
+              dir_names = "tauargus_files/exemple_cout",
+              explanatory_vars = c("Cat","Type"),
+              totcode = c( Cat = "Total", Type = "Total"),
+              secret = "is_secret_prim")
+```
+On peut voir que l'on a pas spécifié de valeur pour le paramètre cost.
+En effet Tau-Argus minimise par défaut la valeur des cellules supprimées.
+C'est ce qui est le plus cohérent, lorsque l'on publie un tableau c'est bien Copyright (c) valeur des cellules qui nous intéresse.
+
+Voici une synthèse du résultat précédent sur le nombre de cellules masquées, valeurvaleur ainsi que les effectifs associés :
+
+```{r}
+synthese_opti_val <- res_opti_val %>% group_by(Status) %>%
+  summarise(nb_cellules = n(),
+            effectif = sum(freq),
+            valeur = sum(value))
+synthese_opti_val
+```
+
+En pratique, la première information qui intéresse les producteurs pour estimer
+le secret secondaire c'est le nombre de cellules masquées, c'est une information
+utile, mais voyons ce que ça donne dans notre cas.
+
+## Minimiser le nombre de cellules secrétisées
+
+Nous allons désormais utiliser le paramètre cost, et donc le définir dans notre
+table.
+Si l'on souhaite minimiser le nombre de cellules masquées, il faut alors que le
+coût de suppression de chaque cellules soit identique, Tau-Argus considère alors
+qu'elles ont toutes la même importance.
+Ici on va créer une colonne "cost" qui vaut 1 pour toutes les cellules.
+
+```{r}
+tab_cout_cell <- tab_cout %>% mutate(cost=1)
+```
+
+Puis on pose le secret secondaire :
+
+```{r}
+res_opti_cell <- tab_rtauargus(tab_cout_cell,
+                     files_name = "cout_cell",
+                     dir_names = "tauargus_files/exemple_cout",
+                     explanatory_vars = c("Cat","Type"),
+                     totcode = c(Cat = "Total", Type = "Total"),
+                     secret = "is_secret_prim",
+                     cost = "cost")
+```
+On effectue une synthèse des résultats :
+
+```{r}
+synthese_opti_cell <- res_opti_cell %>% group_by(Status) %>%
+  summarise(nb_cellules = n(),
+            effectif = sum(freq),
+            valeur = sum(value))
+synthese_opti_cell
+```
+
+## Minimiser les effectifs secrétisées
+
+Désormais nous allons considérer que la valeur importante des cellules sont
+leurs effectifs. On peut considérer qu'un nombre de répondants élevé pour une
+cellule lui confère une plus grande fiabilité statistique.
+Il suffit simplement de recopier la colonne "freq" dans notre colonne "cost"
+
+```{r}
+tab_cout_opti_freq <- tab_cout %>% mutate(cost=freq)
+```
+
+Puis on pose le secret secondaire :
+
+```{r}
+res_opti_freq <- tab_rtauargus(tab_cout_opti_cell,
+                               files_name = "cout_freq",
+                               dir_names = "tauargus_files/exemple_cout",
+                               explanatory_vars = c("Cat","Type"),
+                               totcode = c(Cat = "Total", Type = "Total"),
+                               secret = "is_secret_prim",
+                               cost = "cost")
+```
+On effectue une synthèse des résultats :
+
+```{r}
+synthese_opti_freq <- res_opti_cell %>% group_by(Status) %>%
+  summarise(nb_cellules = n(),
+            effectif = sum(freq),
+            valeur = sum(value))
+```
+En comparaison des résultats précédents, on constate que la somme des effectifs
+a bien été minimisé, en pratique dans la majorité des cas, nous préférons quand même
+minimiser la perte d'information sur la valeur des cellules
+
+## Orienter le secret secondaire
+
+Dernier exemple, supposons que pour certains agrégats, les valeurs des cellules
+de certains agrégats sont jugés non significatif. Ces agrégats ne seront pas publiés
+dans les tableaux mais noté "ns". On peut alors s'en servir pour la pose du secret
+secondaire.
+Attention, on pourrait penser que ces cellules devrait être placées en secret primaire,
+afin qu'elles soient considéré comme masquées quoiqu'il arrive. Cependant cela
+peut entrainer plus de secret secondaire que nécessaire sachant qu'il n'est pas
+nécessaire de protéger ces cellules du risque de recoupement. L'utilisateur peut
+retrouver la valeur de ces cellules, mais il est averti qu'elles n'ont aucunes
+importance statistique.
+Nous avons une table avec ces agrégats non significatifs :
+
+```{r}
+agregat_ns
+```
+On va créer pour ces agrégats la colonne cost qui vaut 1. C'est le coût minimal,
+ceci indiquera à Tau-Argus que ces agrégats sont donc prioritaires pour le secret
+secondaire.
+
+```{r}
+agregat_ns <- agregat_ns %>% mutate(cost = 1)
+```
+On procède ensuite à la jointure avec notre table de base :
+
+```{r}
+table_cout_ns <- table_cout %>% left_join(agregat_ns)
+table_cout_ns
+```
+On constate que certains coûts ne sont pas définis. Ce n'est pas un problème,
+lorsque l'on ne spécifie pas de coût pour une cellule, Tau-Argus va considérer que
+son coût de suppression est égal la valeur de cette dernière.
+
+Voyons ce que donne le secret :
+
+```{r}
+res_cout_ns <- tab_rtauargus(table_cout_ns,
+              files_name = "cout_specif",
+              dir_names = "tauargus_files/exemple_cout",
+              explanatory_vars = c("Cat","Type"),
+              totcode = c( Cat = "Total", Type = "Total"),
+              secret = "is_secret_prim",
+              cost = "cost")
+```
+On peut voir que les 5 agrégats priorisés pour le secret secondaire ont été
+masqué. Attention ce ne sera pas toujours le cas !
+Voyons ce que donne le secret dans son ensemble :
+```{r}
+synthese_ns <- res_cout_ns %>% group_by(Status) %>%
+  summarise(nb_cellules = n(),
+            effectif = sum(freq),
+            valeur = sum(value))
+```
+Plus de cellules masquées que dans les autres cas avec 8 secrets secondaire,
+cependant parmis ces cellules 5 étaient masquées quoiqu'il arrive. 

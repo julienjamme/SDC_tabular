@@ -1,0 +1,817 @@
+# Protéger des tableaux liés
+
+Rafraîchissez votre session R en faisant `ctrl+shift+F10`.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = getwd())
+```
+
+## Objectif:
+
+Savoir protéger un ensemble de tableaux liés en utilisant la fonction
+`tab_multi_manager()` du package `rtauargus`.
+
+## Consignes:
+
+Vous utiliserez les règles en vigueur à l'Insee pour la diffusion des
+tableaux issus des enquêtes entreprises.
+
+Poser un masque de secret sur un ensemble de tableaux liés comprend les
+étapes suivantes:
+
+0.  Lors d'une étape préparatoire, il faut bien analyser les
+    caractéristiques des tableaux et détecter notamment la présence
+    éventuelle de variables hiérarchiques.  
+    Il sera nécessaire de construire deux listes:
+    - une liste des tableaux 
+    - une liste renseignant les noms des variables de croisement de chacun des 
+    tableaux.
+
+1.  Il s'agit dans un premier temps de poser le secret primaire sur
+    chacun des tableaux indépendamment. Il suffit pour cela de procéder
+    comme dans les fiches
+    [01_detecter_cellules_a\_risque.Rmd](01_detecter_cellules_a_risque.Rmd)
+
+2.  Après avoir posé le secret primaire, vous calculerez le nombre de
+    cellules détectées comme à risque dans chacun des tableaux.
+
+3.  Ensuite, il s'agit de poser le secret secondaire en utilisant la
+    fonction `tab_multi_manager()`. Des détails sur son utilisation sont
+    fournis plus bas dans un exemple.
+
+4.  Enfin, vous calculerez le nombre de cellules selon leur statut
+    final, dans chacun des tableaux composant la demande. Nous
+    utiliserons pour cela la norme européenne en notant:
+
+-   `A` les cellules en secret primaire à cause de la règle de fréquence
+-   `B` les cellules en secret primaire à cause de la règle de dominance
+    (dans le futur ces cellules pourraient être notées `O`)
+-   `D` les cellules concernées par le secret secondaire
+-   `V` les cellules non touchées par le secret, cad les cellules qui
+    pourront être diffusées.
+
+## Contexte
+
+Tous les tableaux fournis ont une structure identique dont l'utilité
+sera expliquée plus tard. En plus des variables décrivant les
+croisements (variables catégorielles) placées en début, suivent:
+
+-   `FREQ` la variable indiquant le nombre d'unités statistiques
+    (entreprises en général dans nos exemples) contribuant à la cellule;
+-   `VALUE` la variable indiquant la somme pondérée des valeurs de
+    l'ensemble des contributeurs à la cellule (Cela peut être un chiffre
+    d'affaires, un nombre de personnes en emploi au 31/12, etc.);
+-   `MAX` la valeur du plus gros contributeur à la cellule.
+
+`MAX` et `VALUE` sont nécessairement dans la même unité. Si `VALUE` et
+`FREQ` sont identiques, vous êtes en présence d'un tableau d'effectifs.
+Dans ce cas, la colonne `MAX` n'a aucune utilité.
+
+## Packages et données
+
+```{r packages}
+library(dplyr)
+library(rtauargus)
+```
+
+```{r data}
+load(file="data/data_pour_exo5.RData")
+```
+
+## Localisation de Tau-Argus
+
+Si vous êtes sur AUS
+
+```{r loc-tau}
+loc_tauargus <- "Y:/Logiciels/TauArgus/TauArgus4.2.3/TauArgus.exe"
+options(rtauargus.tauargus_exe = loc_tauargus)
+```
+
+Sinon, modifier le chemin ci-dessous:
+
+```{r eval=FALSE}
+loc_tauargus <- "C:/Users/tmm7an/Documents/SDC/TauArgus/TauArgus4.2.3/TauArgus.exe"
+options(rtauargus.tauargus_exe = loc_tauargus)
+```
+
+## Un exemple
+
+Imaginons qu'on souhaite diffuser, comme dans l'exemple présenté dans le
+diaporama, le nombre d'entreprises en France selon:
+
+-   `T0_1`: le sexe de son/sa dirigeant(e) et la région d'implantation
+-   `T0_2`: le sexe de son/sa dirigeant(e) et le caractère polluant ou
+    nom de l'activité de l'entreprise
+-   `T0_3`: le caractère polluant ou nom de l'activité de l'entreprise
+    et la région d'implantation
+
+```{r}
+T0_1 %>% 
+  tidyr::pivot_wider(names_from = SEXE, values_from = FREQ)
+```
+
+```{r}
+T0_2 %>% 
+  tidyr::pivot_wider(names_from = POLL, values_from = FREQ)
+```
+
+```{r}
+T0_3 %>% 
+  tidyr::pivot_wider(names_from = POLL, values_from = FREQ)
+```
+
+Ces trois tableaux sont liés puisqu'ils partagent des marges communes:
+
+-   `T0_1` et `T0_2` ont ainsi les mêmes marges sur la variable `SEXE`
+-   `T0_1` et `T0_3` ont ainsi les mêmes marges sur la variable `REGION`
+-   `T0_2` et `T0_3` ont ainsi les mêmes marges sur la variable `POLL`
+
+0. En guise de préparation
+
+0.1 Vérifier hiérarchies et totaux
+
+En guis de préaparation, il est important de détecter la présence éventuelle 
+de variables hiérarchiques dans un ou plusierus des tableaux. Ici, aucune variable n'est hiérarchique.
+
+Il est aussi intéressant de repérer les codes servant au total et de s'assurer 
+que ces codes sont cohérents pour une même variable apparaissant dans plusieurs 
+tableaux. En effet, deux tableaux partageant la même variable doivent utiliser 
+la même modalité pour renseigner le total. Ici, le total est noté "TOT" pour 
+toutes les variables dans tous les tableaux.
+
+0.2 Construire une liste de tableaux et une liste des variables de croisements
+
+A partir des tableaux à protéger, nous construisons une liste regroupant tous les 
+tableaux. La liste est nommée, cad que 
+
+```{r}
+liste_tabs_exemple <- list(
+  sex_reg = T0_1,
+  sex_pol = T0_2, 
+  pol_reg = T0_3
+)
+str(liste_tabs_exemple)
+```
+
+On construit une seconde liste dans laquelle nous renseignons le nom des variables 
+de croisements (variables catégorielles décrivant les cellules) pour chacun des tableaux.
+Les éléments de la liste auront les mêmes noms que ceux donnés dans la liste de tableaux.
+
+
+Cette étape peut être réalisée manuellement si les tableaux ne sont pas trop nombreux:
+
+```{r}
+liste_vars_exemple <- list(
+  sex_reg = c("SEXE","REGION"),
+  sex_pol = c("SEXE","POLL"),
+  pol_reg = c("POLL","REGION")
+)
+liste_vars_exemple
+```
+
+
+Ou bien, cette étape peut être automatisée en fonction du contexte. Ici, nous 
+pouvons faire:
+
+```{r}
+liste_vars_exemple <- purrr::map(
+  liste_tabs_exemple,
+  function(tab) names(tab)[1:2]
+)
+liste_vars_exemple
+```
+
+1. Poser le secret primaire sur chacun des tableaux
+
+
+Ici, les tableaux à protéger sont des tableaux d'effectifs. Seule la règle de fréquence
+s'applique donc. Pour cet exemple nous fixons le seuil de diffusion à 11.
+
+```{r}
+liste_tabs_exemple <- purrr::map(
+  liste_tabs_exemple,
+  function(tab){
+    tab %>% 
+      mutate(
+        is_secret_freq = FREQ > 0 & FREQ < 11
+      )
+  }
+)
+str(liste_tabs_exemple)
+```
+
+
+2. Poser le secret secondaire avec `tab_multi_manager()`
+
+
+
+```{r}
+exemple_masq <- tab_multi_manager(
+    list_tables = liste_tabs_exemple,
+    list_explanatory_vars = liste_vars_exemple,
+    dir_name = "tauargus_files/exo5/exemple",
+    totcode = "TOT",
+    value = "VALUE",
+    freq = "FREQ",
+    secret_var = "is_secret_freq"
+)
+```
+
+
+3. Analyser les résultats
+
+3.1 Analyser le journal
+
+La fonction `tab_multi_manager()` fournit un journal décrivant l'ensemble des 
+itérations réalisées lors du procesus de protection. Il s'agit du fichier 
+`journal.txt` dans le répertoire mentionné dans l'argument `dir_name`.
+
+Pour chaque étape, sont indiqués:  
+
+- le tableau sur lequel est posé le secret secondaire;
+- le bilan du secret posé sur ce tableau;
+- le nombre de cellules communes (cad appartenant à plusieurs tableaux) touchées.
+
+L'ensemble des cellules communes est listé en fin de processus.
+
+
+Pourquoi, dans notre cas, le tableau sex_reg n'a pas été traité ?
+
+On constate en effet que jamais la fonction ne s'occupe du tableau `sex_reg`. Ceci
+s'explique simplement:  
+
+- le tableau `sex_reg` ne contient pas de secret primaire;
+- et à aucun moment donné, une cellule commune entre ce tableau et les deux 
+autres n'est touchée durant le processus.
+
+Ainsi, le tableau `sex_reg` est intact.
+
+
+3.2 Bilan du secret
+
+L'objet retourné par la fonction `tab_multi_manager()` est une liste contenant 
+les mêmes tables que la liste placée en input auxquelles sont ajoutés les résultats 
+des différentes étapes de la pose du secret secondaire: 
+
+```{r}
+exemple_masq %>% str()
+```
+
+
+Ainsi, la dernière variable de chaque tableau permet de déterminer le
+statut final de chaque cellule.
+
+
+```{r}
+exemple_masq <- exemple_masq %>% 
+  purrr::map(
+    function(tab){
+      tab %>% 
+        rename_with(~"is_secret_final", last_col()) %>% 
+        mutate(
+          statut_final = case_when(
+            is_secret_freq ~ "A",
+            is_secret_final ~"D",
+            TRUE ~ "V"
+          )
+        )
+    }
+  )
+str(exemple_masq)
+```
+
+On peut ainsi dresser notre bilan par tableau:  
+
+```{r}
+exemple_masq %>% 
+  purrr::imap_dfr(
+    function(tab, nom){
+      tab %>% 
+        count(statut_final) %>% 
+        mutate(
+          part = n/sum(n)*100,
+          table = nom
+        ) %>% 
+        relocate(table)
+    }
+  )
+```
+
+
+## A vous de jouer
+
+### Protéger 4 tableaux liés par les marges
+
+Pour cet exemple, vous utiliserez les tableaux présents nativement dans le 
+package `rtauargus`
+
+```{r}
+data("turnover_act_size")
+data("turnover_act_cj")
+data("turnover_nuts_size")
+data("turnover_nuts_cj")
+```
+
+
+- `turnover_act_size`: CA ventilé par activité et taille de l'entreprise
+- `turnover_act_cj`: CA ventilé par activité et taille de l'entreprise
+- `turnover_nuts_size`: CA ventilé par nuts et taille de l'entreprise
+- `turnover_nuts_cj`: CA ventilé par nuts et catégorie juridique de l'entreprise
+
+L'activité et les nuts sont deux variables hiérarchiques. Les tables de correspondance 
+associées sont les tables `activity_corr_table` et `nuts23_fr_corr_table`. Elles 
+sont aussi présentes nativement dans le package.
+
+```{r}
+data("activity_corr_table")
+data("nuts23_fr_corr_table")
+```
+
+Les variables utilisées dans ces tableaux sont différentes:
+
+- `TOT` variable de réponse (valeur)
+- `N_OBS` fréquence
+
+Le total de chacune des variables de croisement (ACTIVITY, NUTS, SIZE et CJ) est 
+noté "Total".
+
+0. Préparation
+
+0.1 Ces quatre tableaux sont-ils liés? Si oui, en quel sens le sont-ils ?
+
+Les tableaux sont liés par les marges:
+
+- `turnover_act_size` et `turnover_act_cj` partagent les marges d'activité
+- `turnover_nuts_size` et `turnover_nuts_cj` partagent les marges des nuts
+- `turnover_act_size` et `turnover_nuts_size` partagent les marges de taille
+- `turnover_act_cj` et `turnover_nuts_cj` partagent les marges de cat. jur.
+
+0.2 En cas de présence de variables hiérarchiques, constituer les fichiers 
+argus nécessaires.
+
+Les variables `ACTIVITY` et `NUTS` sont hiérarchiques.
+
+```{r}
+act_hrc_file <- write_hrc2(activity_corr_table, file_name = "hrc/activity.hrc")
+
+nuts_hrc_file <- nuts23_fr_corr_table %>% 
+  write_hrc2(file_name = "hrc/nuts23.hrc")
+```
+
+
+0.3 Préparer la liste de tables et la liste des variables catgéorielles
+
+
+```{r}
+liste_4tabs <- list(
+  act_size = turnover_act_size,
+  act_cj = turnover_act_cj,
+  nuts_size = turnover_nuts_size,
+  nuts_cj = turnover_nuts_cj
+)
+str(liste_4tabs)
+```
+```{r}
+liste_vars_4tabs <- purrr::map(
+  liste_4tabs,
+  function(data) colnames(data)[1:2]
+)
+```
+
+
+1. Poser le secret primaire
+
+1.1 
+
+```{r}
+liste_4tabs <- liste_4tabs %>%
+  purrr::map(
+    function(df){
+      df %>%
+        mutate(
+          is_secret_freq = N_OBS > 0 & N_OBS < 3,
+          is_secret_dom = (MAX != 0) & (MAX > TOT*0.85),
+          is_secret_prim = is_secret_freq | is_secret_dom
+        )
+    }
+  )
+str(liste_4tabs)
+```
+
+1.2 Prendre connaissance de la quantité de secret primaire présent dans les tableaux
+
+```{r}
+liste_4tabs %>% purrr::walk(function(tab) count(tab, is_secret_prim) %>% print())
+```
+
+2. Poser le secret secondaire avec `tab_multi_manager()`
+
+
+```{r}
+masq_4tabs <- tab_multi_manager(
+    list_tables = liste_4tabs,
+    list_explanatory_vars = liste_vars_4tabs,
+    dir_name = "tauargus_files/exo5/4tabs",
+    hrc = list(ACTIVITY = act_hrc_file, NUTS = nuts_hrc_file),
+    totcode = "Total",
+    value = "TOT",
+    freq = "N_OBS",
+    secret_var = "is_secret_prim"
+)
+```
+
+3. Analyser les résultats
+
+3.1 Analyser le journal
+
+3.1.1 Des cellules communes ont-elles été touchées pendant le processus ?
+
+3.1.2 Quelle caractéristique ont les cellules communes touchées lors du processus ?
+
+La liste des cellules communes est founie à la fin du fichier [tauargus_files/exo5/4tabs/journal.txt](tauargus_files/exo5/4tabs/journal.txt).
+On peut ici remarquer que les cellules communes touchées concernent uniquement 
+les marges d'activité ou les marges géographiques. En effet, pour chacune d'entre 
+elles, la taille ou la catégorie juridique prennent la valeur "Total".
+
+3.1.3 Combien de fois chacun des tableaux a-t-il été traité ?
+
+Le tableau `act_size` a été traité deux fois. Les trois autres tableaux n'ont eu 
+besoin que d'un seul traitement.
+
+3.2 Bilan comptable
+
+3.2.1 Construire la variable `statut_final` dans chacun des tableaux
+
+```{r}
+masq_4tabs <- masq_4tabs %>% 
+  purrr::map(
+    function(tab){
+      tab %>% 
+        rename_with(~"is_secret_final", last_col()) %>% 
+        mutate(
+          statut_final = case_when(
+            is_secret_freq ~ "A",
+            is_secret_dom ~ "B",
+            is_secret_final ~"D",
+            TRUE ~ "V"
+          )
+        )
+    }
+  )
+str(masq_4tabs$act_size)
+```
+
+
+3.2.2 Mesurer la quantité d'information supprimée en nombre de cellules, en effectifs 
+et en valeur, pour chacun des tableaux.
+
+
+```{r}
+bilan_4tabs <- masq_4tabs %>% 
+  purrr::imap_dfr(
+    function(tab, nom){
+      tab %>% 
+        group_by(statut_final) %>% 
+        summarise(
+          n_cell = n(),
+          freq_cell = sum(N_OBS),
+          val_cell = sum(TOT)
+        ) %>% 
+        mutate(
+          across(
+            all_of(ends_with("_cell")),
+            ~round(./sum(.)*100,1),
+            .names = "{.col}_pc"
+          )
+        ) %>% 
+        mutate(table = nom) %>%
+        relocate(table)
+    }
+  )
+str(masq_4tabs$act_size)
+```
+
+```{r}
+bilan_4tabs %>% 
+  select(table, statut = statut_final, starts_with("n_"), starts_with("freq_"), starts_with("val_")) %>% 
+  flextable::flextable() %>% 
+  flextable::add_header_row(colwidths = c(1,1,2,2,2), values = c("","","n_cell","freq_cell","val_cell")) %>% 
+  flextable::set_header_labels(
+    n_cell = "n", freq_cell = "freq", val_cell = "val",
+    n_cell_pc = "%", freq_cell_pc = "%", val_cell_pc = "%"
+  ) %>% 
+  flextable::colformat_double(big.mark = " ", digits = 0) %>% 
+  flextable::colformat_int(big.mark = " ") %>% 
+  flextable::theme_booktabs() %>%
+  flextable::bold(part = "header") %>% 
+  flextable::vline(j = c(2, 4, 6), border = flextable::fp_border_default()) %>% 
+  flextable::autofit(add_w = 0, add_h = 0)
+```
+
+
+## Bonus: Gérer des hiérarchies non emboîtées
+
+
+Imaginons que nous souhaitons diffuser le CA des entreprises ventilé 
+par secteur d'activité et taille d'entreprises, d'une part, et par secteur 
+d'activité et par catégorie juridique d'autre part.
+
+Les données correspondantes sont présentes dans les tableaux (nativement présents
+dans le package `rtauargus`) suivants:
+
+```{r}
+data("turnover_act_size")
+data("turnover_act_cj")
+```
+
+Les secteurs d'activité diffusés les secteurs des niveaux A10 > A21 > A88 de la 
+NAF. Jusque là, rien de nouveau par rapport au précédent cas. Nos deux tableaux 
+sont liés par les marges.
+
+Supposons que notre interlocuteur souhaite disposer d'un sous-total supplémentaire 
+qu'on appellera `D_TO_M` et qui correspond à l'agrégation des codes `D` à `M` du 
+niveau A21 de la NAF.
+
+1. Qu'est-ce que cette demande complémentaire change pour la gestion de la confidentialité ?
+
+Si on jette un oeil à la table de correspondance des activités, on peut s'apercevoir 
+que le nouveau sous-total ne s'emboîte pas dans la hiérarchie globale. En effet,
+les codes `D` et `E`, par exemple, participent à deux sous-totaux:
+
+- `BE` au niveau A10 de la NAF
+- `D_TO_M` pour notre sous-total
+
+Ainsi, les deux sous-totaux `BE` et `D_TO_M` partagent des secteurs mais 
+ne s'imbriquent pas l'un dans l'autre.
+
+Nous sommes donc en présence de hiérarchies non-emboîtées.
+
+2. Construire une table que nous appellerons `turnover_act_size_D_TO_M` à partir
+de la table `turnover_act_size` permettant de fournir le sous-total demandé et 
+d'assurer la protection de l'ensemble des tableaux.
+
+
+La table supplémentaire à construire doit contenir:
+
+- les informations correspondant au nouveau sous-total;
+- les informations sur les niveaux d'activité D à M qui constituent ce sous-total;
+- les informations sur tous les sous-niveaux composant les secteurs D à M
+
+2.1 A partir de la table de correspondance des activités, récupérer les codes A88
+correspondant aux niveaux D à M (A21)
+
+```{r}
+dm <- LETTERS[4:13]
+dm_A88 <- activity_corr_table %>% filter(A21 %in% dm) %>%  pull(A88)
+```
+
+2.2 Construire la table en empilant les codes déjà existant et le code D_TO_M que vous aurez calculé.
+
+```{r}
+turnover_act_size_D_TO_M <- turnover_act_size %>%
+  filter(
+    ACTIVITY %in% c(dm, dm_A88)
+  ) %>%
+  bind_rows(
+    turnover_act_size %>%
+      filter(
+        ACTIVITY %in% dm
+      ) %>%
+      group_by(SIZE) %>%
+      summarise(N_OBS = sum(N_OBS), TOT = sum(TOT), MAX = max(MAX)) %>%
+      mutate(ACTIVITY = "D_TO_M")
+  )
+str(turnover_act_size_D_TO_M)
+```
+
+3. Construire, de la même manière, une table que nous appellerons 
+`turnover_act_cj_D_TO_M` à partir de la table `turnover_act_cj`.
+
+
+```{r}
+turnover_act_cj_D_TO_M <- turnover_act_cj %>%
+  filter(
+    ACTIVITY %in% c(dm, dm_A88)
+  ) %>%
+  bind_rows(
+    turnover_act_cj %>%
+      filter(
+        ACTIVITY %in% dm
+      ) %>%
+      group_by(CJ) %>%
+      summarise(N_OBS = sum(N_OBS), TOT = sum(TOT), MAX = max(MAX)) %>%
+      mutate(ACTIVITY = "D_TO_M")
+  )
+str(turnover_act_cj_D_TO_M)
+```
+
+> Remarque: Alors que la diffusion des données concerne uniquement deux tabeaux 
+(ACTxSIZE et ACTxCJ), nous devons construire 4 tableaux au total pour assurer la
+confidentialité des données.
+
+4. Préparer la liste des tableaux
+
+
+```{r}
+liste_tabs_bonus <- list(
+  act_size = turnover_act_size,
+  act_size_dm = turnover_act_size_D_TO_M,
+  act_cj = turnover_act_cj,
+  act_cj_dm = turnover_act_cj_D_TO_M
+)
+str(liste_tabs_bonus)
+```
+
+5. Préparer la liste des variables
+
+
+```{r}
+liste_vars_bonus <- purrr::map(
+  liste_tabs_bonus,
+  function(tab) colnames(tab)[1:2]
+)
+liste_vars_bonus
+```
+
+6. Préparer les fichiers argus pour les différentes variables hiérarchiques
+
+Hint: Deux fichiers hiérarchiques sont nécessaires !
+
+
+La hiérarchie associée à la variable `ACTIVITY` des tableaux `act_size` et `act_cj` 
+correspond à la hiérarchie NAF déjà entrevue dans les exercices.
+
+```{r}
+hrc_act_file <- activity_corr_table %>% write_hrc2(file_name = "hrc/activity.hrc")
+```
+
+La hiérarchie associée à la variable `ACTIVITY` des tableaux `act_size_dm` et `act_cj_dm` 
+correspond à la hiérarchie complémentaire décrivant l'emboîtement de D_TO_M avec tous 
+ses sous-niveaux.
+
+```{r}
+hrc_act_dm_file <- activity_corr_table %>% 
+  filter(A88 %in% dm_A88) %>% 
+  select(-A10) %>% 
+  write_hrc2(file_name = "hrc/activity_DTM.hrc")
+```
+
+En ouvrant le fichier [hrc/activity_DTM.hrc](hrc/activity_DTM.hrc), vérifiez que 
+vous obtenez la hiérarchie souhaitée.
+
+7. Poser le secret primaire sur tous les tableaux
+
+
+```{r}
+liste_tabs_bonus <- liste_tabs_bonus %>% 
+  purrr::map(
+    function(df){
+      df %>%
+        mutate(
+          is_secret_freq = N_OBS > 0 & N_OBS < 3,
+          is_secret_dom = (MAX != 0) & (MAX > TOT*0.85),
+          is_secret_prim = is_secret_freq | is_secret_dom
+        )
+    }
+  )
+str(liste_tabs_bonus)
+```
+
+8. Préparer la liste des variables de croisement
+
+```{r}
+liste_vars_bonus <- liste_tabs_bonus %>% purrr::map(function(tab) colnames(tab)[1:2])
+liste_vars_bonus
+```
+
+
+9. Faites un rapide comptage du secret primaire
+
+```{r}
+liste_tabs_bonus %>% purrr::walk(function(tab) tab %>% count(is_secret_prim) %>%  print())
+```
+
+
+10. Poser le secret secondaire avec la fonction `tab_multi_manager()`
+
+Ici, un problème apparaît puisque pour une même variable correspondent deux fichiers 
+hiérarchiques et deux totaux. Pour régler ce problème, la fonction `tab_multi_manager()` 
+fournit les arguments suivants:
+
+- `alt_hrc` pour renseigner une hrc aletrnative pour une variable donnée, dans un tableau donné;
+- `alt_totcode` pour renseigner un totcode aletrnatif pour une variable donnée, dans un tableau donné.
+
+
+```{r}
+masq_bonus <- tab_multi_manager(
+  list_tables = liste_tabs_bonus,
+  list_explanatory_vars = liste_vars_bonus,
+  hrc = c(ACTIVITY = hrc_act_file), # hiérarchie principale d'activité
+  alt_hrc = list( #hiérarchie alternatives dans les deux tableaux supp
+    act_size_dm = c(ACTIVITY = hrc_act_dm_file),
+    act_cj_dm = c(ACTIVITY = hrc_act_dm_file)
+  ),
+  dir_name = "tauargus_files/exo5/bonus",
+  value = "TOT",
+  freq = "N_OBS",
+  secret_var = "is_secret_prim",
+  totcode =  "Total", # totcode valable pour toutes les variables dans tous les tableaux
+  alt_totcode = list(# totcode alternatif pour l'activité dans les deux tableaux supp
+    act_size_dm = c(ACTIVITY = "D_TO_M"),
+    act_cj_dm = c(ACTIVITY = "D_TO_M")
+  )
+)
+```
+
+
+9. Analyser vos résultats
+
+9.1 Analyser le journal
+
+9.1.1 Combien d'étapes a-t-il fallu pour assurer la protection des tableaux ?
+
+7 étapes
+
+9.1.2 Combien de fois chaque tableau a-t-il été traité ?
+
+Tous les tableaux ont été traités deux fois, sauf le tableau act_cj_dm pour lequel  un seul traitement a été suffisant.
+
+9.1.3 Combien de cellules communes ont été touchées à chaque étape du processus ?
+
+36, 5, 40, 23, 1, 0, 0
+
+9.2 Bilan du secret par tableau
+
+9.2.1 Construire la variable `statut_final` indiquant le statut final des cellules.
+
+```{r}
+masq_bonus <- masq_bonus %>% 
+  purrr::map(
+    function(tab){
+      tab %>% 
+        rename_with(~"is_secret_final", last_col()) %>% 
+        mutate(
+          statut_final = case_when(
+            is_secret_freq ~ "A",
+            is_secret_dom ~ "B",
+            is_secret_final ~"D",
+            TRUE ~ "V"
+          )
+        )
+    }
+  )
+str(masq_bonus$act_size)
+```
+
+9.2.2 Mesurer la quantité d'information supprimée en nombre de cellules, en effectifs 
+et en valeur, pour chacun des tableaux.
+
+
+```{r}
+bilan_bonus <- masq_bonus %>% 
+  purrr::imap_dfr(
+    function(tab, nom){
+      tab %>% 
+        group_by(statut_final) %>% 
+        summarise(
+          n_cell = n(),
+          freq_cell = sum(N_OBS),
+          val_cell = sum(TOT)
+        ) %>% 
+        mutate(
+          across(
+            all_of(ends_with("_cell")),
+            ~round(./sum(.)*100,1),
+            .names = "{.col}_pc"
+          )
+        ) %>% 
+        mutate(table = nom) %>%
+        relocate(table)
+    }
+  )
+```
+
+```{r}
+bilan_bonus %>% 
+  select(table, statut = statut_final, starts_with("n_"), starts_with("freq_"), starts_with("val_")) %>% 
+  flextable::flextable() %>% 
+  flextable::add_header_row(colwidths = c(1,1,2,2,2), values = c("","","n_cell","freq_cell","val_cell")) %>% 
+  flextable::set_header_labels(
+    n_cell = "n", freq_cell = "freq", val_cell = "val",
+    n_cell_pc = "%", freq_cell_pc = "%", val_cell_pc = "%"
+  ) %>% 
+  flextable::colformat_double(big.mark = " ", digits = 0) %>% 
+  flextable::colformat_int(big.mark = " ") %>% 
+  flextable::theme_booktabs() %>%
+  flextable::bold(part = "header") %>%
+  flextable::vline(j = c(2, 4, 6), border = flextable::fp_border_default()) %>% 
+  flextable::autofit(add_w = 0, add_h = 0)
+```
+
+
+
+
+
+
+

@@ -1,0 +1,24 @@
+project:
+  type: book
+
+book:
+  title: "SDC_tabular"
+  author: "Jane Doe"
+  date: "13/10/2022"
+  chapters:
+    - index.qmd
+    - intro.qmd
+    - 00_installations.qmd
+    - 01_detecter_cellules_a_risque.qmd 
+    - references.qmd
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+  pdf:
+    documentclass: scrreprt
+
+editor: visual
+
